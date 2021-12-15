@@ -1,0 +1,123 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 80a1bfa27b60a1c46a087061c5c21800, type: 3}
+  m_Name: TestManager
+  m_EditorClassIdentifier: 
+  TextureSheet: {fileID: 0}
+  maxColumns: 8
+  textureSize: 128
+  textures:
+  - {fileID: 2800000, guid: 9463242baae6c4f4192560f5c94860d1, type: 3}
+  - {fileID: 2800000, guid: 441b150d03f56254ca0537e894b370f6, type: 3}
+  - {fileID: 2800000, guid: b01d7f1463b3fc24faf065215fbcba80, type: 3}
+  - {fileID: 2800000, guid: 2fae05a8a4be5484c96ae74dbc7e0d85, type: 3}
+  - {fileID: 2800000, guid: 6b88221a393b67a4fbb84695d0cd0a11, type: 3}
+  - {fileID: 2800000, guid: e6f250c71b201d8489d56a1473d6e849, type: 3}
+  - {fileID: 2800000, guid: 9532b18a074a63549ad486cd433237d1, type: 3}
+  - {fileID: 2800000, guid: a862150488de8a54fbd453e38cd0817b, type: 3}
+  - {fileID: 2800000, guid: 8790a70c5efa93947ba479a0ff389995, type: 3}
+  - {fileID: 2800000, guid: 03b3177905c43f3459e6a57b1c00c69b, type: 3}
+  - {fileID: 2800000, guid: be367f19696ccf24581709040355cee9, type: 3}
+  - {fileID: 2800000, guid: 277ca16e7d232ef40805d08be815d668, type: 3}
+  - {fileID: 2800000, guid: e860547683cc36e4e8e34322637f6b8c, type: 3}
+  - {fileID: 2800000, guid: 3748c90beb519b04d963fc76c30ead4d, type: 3}
+  - {fileID: 2800000, guid: 5411f94bd8d1ad947bf1d1eeaec336b4, type: 3}
+  - {fileID: 2800000, guid: 766b00d50e6a1504a96923888350c373, type: 3}
+  - {fileID: 2800000, guid: 76bfceb995893f949a7292b864c00e74, type: 3}
+  - {fileID: 2800000, guid: c9ecf790246514a45aa0c13e6b4d9ba6, type: 3}
+  blockTypes:
+  - Name: Air
+    South: 0
+    North: 0
+    East: 0
+    West: 0
+    Up: 0
+    Down: 0
+  - Name: Dirt
+    South: 8
+    North: 8
+    East: 8
+    West: 8
+    Up: 8
+    Down: 8
+  - Name: Grass
+    South: 4
+    North: 4
+    East: 4
+    West: 4
+    Up: 10
+    Down: 8
+  - Name: Stone
+    South: 11
+    North: 11
+    East: 11
+    West: 11
+    Up: 11
+    Down: 11
+  - Name: Stone_Snow
+    South: 14
+    North: 14
+    East: 14
+    West: 14
+    Up: 13
+    Down: 11
+  - Name: Grass
+    South: 1
+    North: 1
+    East: 1
+    West: 1
+    Up: 1
+    Down: 1
+  - Name: Green_Cotton
+    South: 9
+    North: 9
+    East: 9
+    West: 9
+    Up: 9
+    Down: 9
+  - Name: Trunk
+    South: 17
+    North: 17
+    East: 17
+    West: 17
+    Up: 16
+    Down: 16
+  - Name: Planks
+    South: 15
+    North: 15
+    East: 15
+    West: 15
+    Up: 15
+    Down: 15
+  - Name: Sand
+    South: 12
+    North: 12
+    East: 12
+    West: 12
+    Up: 12
+    Down: 12
+  - Name: Red_Cotton
+    South: 6
+    North: 6
+    East: 6
+    West: 6
+    Up: 6
+    Down: 6
+  - Name: Red_Brick
+    South: 3
+    North: 3
+    East: 3
+    West: 3
+    Up: 3
+    Down: 3
+  tileWidth: 0.125
+  tileHeight: 0.33333334

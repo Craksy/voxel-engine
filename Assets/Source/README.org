@@ -1,0 +1,4 @@
+* Naming conventions
+ - World position: block coordinate in world space.
+ - Block position: block coordinate in chunk space.
+ - Chunk position: Chunk coordinate - scaled by chunk size.

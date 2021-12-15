@@ -1,0 +1,34 @@
+void TraverseBvh(Ray ray, float2 xy) {
+    uint index = 0;
+    uint max_length = _NodeCount;
+    uint shape = UINT_MAX;
+    float maxDist = 1000;
+    float currDist = maxDist;
+    RayResult res;
+
+    while (index < max_length) {
+        BVHNode node = _Bvh[index];
+        if (node.entry_index == UINT_MAX) {
+            res = RayHit(ray, node.aabb, 0, maxDist);
+            if (res.hit && res.distance < currDist) {
+                currDist = res.distance;
+                shape = node.shape_index;
+            }
+            index = node.exit_index;
+        }
+        else {
+            res = RayHit(ray, node.aabb, 0, maxDist);
+            if (res.hit && res.distance < currDist) {
+                index = node.entry_index;
+            }
+            else {
+                index = node.exit_index;
+            }
+        }
+    }
+    float val = (maxDist - currDist) / maxDist;
+    //_Tex[xy] = float4(val, val, val, 1);
+    if (shape != UINT_MAX) {
+        _VisibleShapes[shape] = true;
+    }
+}

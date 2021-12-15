@@ -1,0 +1,87 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+#define FLOAT_MAX 3.402823466e+38F;
+
+struct Box{
+    float3 min;  
+    float3 max;
+};
+
+struct BNode{
+    Box bounds;
+    int entry;
+    int exit;
+    int shape;
+};
+
+struct Ray{
+    float3 origin;
+    float3 direction;
+};
+
+struct RayHit{
+    bool hit;
+    float entry_distance;
+};
+
+
+RWStructuredBuffer<BNode> Bvh;
+RWStructuredBuffer<Ray> Rays;
+RWBuffer<int> Hits;
+
+int height;
+int width;
+int root;
+
+RayHit CheckIntersect(Ray r, Box b){
+    float3 imin = (b.min - r.origin)/r.direction;
+    float3 imax = (b.max - r.origin)/r.direction;
+
+    float3 tmin = min(imin, imax);
+    float3 tmax = max(imin, imax);
+
+    float cmin = max(max(tmin.x, tmin.y), tmin.z);
+    float cmax = min(min(tmax.x, tmax.y), tmax.z);
+
+    RayHit result;
+    result.hit = !(cmin > cmax);
+    result.entry_distance = cmin;
+
+    return result;
+}
+
+void CheckBvh(Ray ray){
+    //float distance = FLOAT_MAX;
+    float distance = 10000;
+    int index = root;
+    int shape = -1;
+    while(index > -1){
+        BNode node = Bvh[index];
+        RayHit check = CheckIntersect(ray, node.bounds);
+        if(node.entry == -1){
+            if(check.hit && check.entry_distance < distance){
+                shape = node.shape;
+                distance = check.entry_distance;
+            }
+            index = node.exit;
+        }else{
+            if(check.hit){
+                index = node.entry;
+            }else{
+                index = node.exit;
+            }
+        }
+    }
+
+    if(shape != -1){
+        Hits[shape] = 1;
+    }
+}
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    int idx = id.x*height+id.y;
+    CheckBvh(Rays[idx]);
+}

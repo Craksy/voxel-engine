@@ -1,0 +1,266 @@
+#pragma enable_d3d11_debug_symbols
+#pragma kernel check_occlusion
+#pragma kernel populate_positions
+#define UINT_MAX 4294967295u
+#define FLOAT_MAX 3.402823466E+38f
+
+//######################################################################
+//################## Structures ########################################
+//######################################################################
+// struct Bounds{
+//     uint bmin;
+//     uint bmax;
+// };
+
+struct Box{
+    half3 min;
+    half3 max;
+};
+
+struct Node{
+    uint bmin;
+    uint bmax;
+    uint entry;
+    uint exit;
+    uint shape;
+    uint type;
+};
+
+struct Ray{
+    float3 origin;
+    float3 direction;
+};
+
+struct RayHit{
+    bool hit;
+    half distance;
+};
+
+
+struct InstanceData{
+    float3 position;
+    uint type;
+};
+
+struct SignRay{
+    float3 dir;
+    float3 invDir;
+    bool3 sign;
+};
+
+struct SignBox{
+    half3 bounds[2];
+};
+
+
+//######################################################################
+//################## Data ##############################################
+//######################################################################
+RWStructuredBuffer<Node> BvhBuffer; //Buffer containing BVH nodes
+RWTexture2D<float> depthBuffer; //Depth buffer
+RWBuffer<uint> HitsBuffer; //buffer to track hits
+AppendStructuredBuffer<InstanceData> InstanceDataBuffer; //buffer to populate with positions and types. used for instancing.
+
+
+float4x4 _CamToWorld; //Camera to world matrix
+float4x4 _CamInverseProjection; //Inversed camera projection matrix
+float3 origin;
+
+uint2 pixelOffset; //minimum point of the rectangle currently checking in.
+uint height; //screen pixel height
+uint width; //screen pixel width
+
+uint root; //root index of the current BVH
+float3 chunkOffset; //actual position of current chunk
+
+
+//######################################################################
+//################## Testing ###########################################
+//######################################################################
+
+
+//######################################################################
+//################## Helpers ###########################################
+//######################################################################
+
+//unpack uints to get 6 values for an AABB.
+Box unpack_box(uint bmin, uint bmax){
+    Box b;
+    b.min = half3(bmin&255, bmin>>8&255, bmin>>16&255) + chunkOffset;
+    b.max = half3(bmax&255, bmax>>8&255, bmax>>16&255) + chunkOffset;
+    return b;
+}
+
+// convert pixel coordinates to [-1,1] uv coordinates
+half2 pixel_to_uv(uint2 position){
+    return half2(position / float2(width, height) * 2.0f - 1.0f); 
+}
+
+//Get a ray from pixel coordinate
+half3 get_camera_ray(uint2 screenpos){
+    // float2 uv = PixelToUv(screenpos);
+    half3 direction = mul(_CamInverseProjection, float4(pixel_to_uv(screenpos),0,1)).xyz;
+    direction = mul(_CamToWorld, float4(direction, 0.0f)).xyz;
+    direction = normalize(direction);
+
+    return direction;
+}
+
+SignBox get_sign_box(uint bmin, uint bmax){
+    SignBox sb;
+    sb.bounds[0] = half3(bmin&255, bmin>>8&255, bmin>>16&255)+chunkOffset;
+    sb.bounds[1] = half3(bmax&255, bmax>>8&255, bmax>>16&255)+chunkOffset;
+    return sb;
+}
+
+SignRay get_sign_ray(uint2 screenpos){
+    half3 dir = get_camera_ray(screenpos);
+    half3 invDir = 1/dir;
+    SignRay sr;
+    sr.dir = dir;
+    sr.invDir = invDir;
+    sr.sign = bool3(invDir.x<0, invDir.y<0, invDir.z<0);
+    return sr;
+}
+
+float sign_intersect(SignRay ray, SignBox b){
+    float tmin = (b.bounds[ray.sign.x].x - origin.x) * ray.invDir.x; 
+    float tmax = (b.bounds[1 - ray.sign.x].x - origin.x) * ray.invDir.x; 
+    float tymin = (b.bounds[ray.sign.y].y - origin.y) * ray.invDir.y; 
+    float tymax = (b.bounds[1 - ray.sign.y].y - origin.y) * ray.invDir.y; 
+
+    if ((tmin > tymax) || (tymin > tmax)) 
+        return FLOAT_MAX; 
+    if (tymin > tmin) 
+        tmin = tymin; 
+    if (tymax < tmax) 
+        tmax = tymax; 
+
+    float tzmin = (b.bounds[ray.sign.z].z - origin.z) * ray.invDir.z; 
+    float tzmax = (b.bounds[1 - ray.sign.z].z - origin.z) * ray.invDir.z; 
+ 
+    if (tmin > tzmax || tzmin > tmax) 
+        return FLOAT_MAX; 
+    if (tzmin > tmin) 
+        tmin = tzmin; 
+    if (tzmax < tmax) 
+        tmax = tzmax; 
+    if (tmin < 0)
+        return FLOAT_MAX; 
+ 
+    return tmin; 
+}
+
+
+//Check if ray intersects with AABB. return distance
+RayHit check_intersect(half3 direction, Box b){
+    const half3 imin = (b.min - origin)/direction;
+    const half3 imax = (b.max - origin)/direction;
+
+    half3 tmin = min(imin, imax);
+    half3 tmax = max(imin, imax);
+
+    half cmin = max(max(tmin.x, tmin.y), tmin.z);
+    half cmax = min(min(tmax.x, tmax.y), tmax.z);
+
+    RayHit result;
+    result.hit = cmin < cmax && cmax > 0;
+    result.distance = cmin;
+
+    return result;
+}
+
+void bvh_sign(uint2 pix){
+    float distance = depthBuffer.Load(pix); //get depth from buffer
+    SignRay ray = get_sign_ray(pix);
+    uint index = root; // initial index is the root node
+    uint shape = UINT_MAX; // -1 means no hit
+    uint type = 0;
+    while(index < UINT_MAX){ //the root exit pointer is UINT_MAX
+        Node node = BvhBuffer[index];
+        // Box box = UnpackBox(node.bmin, node.bmax);
+        const float check = sign_intersect(ray, get_sign_box(node.bmin, node.bmax));
+        if(node.entry == UINT_MAX){ 
+            if(check < FLOAT_MAX && check < distance){
+                //set current closest hit and update distance
+                shape = node.shape;
+                type = node.type;
+                distance = check;
+            }
+            index = node.exit;
+        }else{
+            if(check < FLOAT_MAX){
+                index = node.entry;
+            }else{
+                index = node.exit;
+            }
+        }
+    }
+    if(shape != UINT_MAX){
+        //update the hits buffer if there was one
+        HitsBuffer[shape] = type;
+        depthBuffer[pix] = distance;
+    }
+}
+
+//Traverse a BVH and set hits
+void check_bvh(uint2 pix){
+    half distance = depthBuffer.Load(pix); //get depth from buffer
+    const half3 ray_dir = get_camera_ray(pix); //get ray
+    uint index = root; // initial index is the root node
+    uint shape = UINT_MAX; // -1 means no hit
+    uint type = 0;
+    while(index < UINT_MAX){ //the root exit pointer is UINT_MAX
+        const Node node = BvhBuffer[index];
+        const RayHit check = check_intersect(ray_dir, unpack_box(node.bmin, node.bmax));
+        if(node.entry == UINT_MAX){ 
+            if(check.hit && check.distance < distance){
+                //set current closest hit and update distance
+                shape = node.shape;
+                type = node.type;
+                distance = check.distance;
+            }
+            index = node.exit;
+        }else{
+            if(check.hit){
+                index = node.entry;
+            }else{
+                index = node.exit;
+            }
+        }
+    }
+    if(shape != UINT_MAX){
+        //update the hits buffer if there was one
+        HitsBuffer[shape] = type;
+        depthBuffer[pix] = distance;
+    }
+}
+
+//######################################################################
+//################## Main ##############################################
+//######################################################################
+[numthreads(16,16,1)]
+void check_occlusion (uint3 id : SV_DispatchThreadID)
+{
+    //each thread ID corresponds to a pixel in the rectangle that is currently being checked
+    //add minimum point of the rect to get actual pixel coordinate
+    // uint2 pixel = id.xy + pixelOffset;
+    bvh_sign(id.xy+pixelOffset);
+}
+
+[numthreads(8,8,8)]
+void populate_positions (uint3 id : SV_DispatchThreadID)
+{
+    // each thread id corresponds to a coordinate within current chunk
+    // convert to array index and get hits buffer entry
+    const uint idx = id.x*128*128+id.y*128+id.z;
+    const uint voxel = HitsBuffer[idx];
+    //if there was a hit, push instance data onto the buffer and reset the hits entry
+    if(voxel != 0){
+        InstanceData data;
+        data.position = float3(id+chunkOffset);
+        data.type = voxel;
+        InstanceDataBuffer.Append(data);
+        HitsBuffer[idx] = 0;
+    }
+}

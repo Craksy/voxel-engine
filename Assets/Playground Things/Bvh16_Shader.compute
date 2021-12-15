@@ -1,0 +1,138 @@
+#pragma kernel CSMain
+#define USHORT_MAX 0xffff
+#define FLOAT_MAX 3.40282347E+38
+
+//######################################################################
+//################## Structures ########################################
+//######################################################################
+struct Node{
+    uint box;
+    uint traversal;
+    uint shape;
+};
+
+struct Ray{
+    float3 origin;
+    float3 direction;
+};
+
+struct RayHit{
+    bool hit;
+    float distance;
+};
+
+struct Box{
+    float3 min;
+    float3 max;
+};
+
+
+//######################################################################
+//################## Data ##############################################
+//######################################################################
+RWStructuredBuffer<Node> _bvh;
+RWTexture2D<float> depthBuffer;
+RWBuffer<uint> _hits;
+
+float4x4 _CamToWorld;
+float4x4 _CamInverseProjection;
+
+uint root;
+int height;
+int width;
+float3 chunkOffset;
+uint shapeOffset;
+
+
+//######################################################################
+//################## Helpers ###########################################
+//######################################################################
+
+//unpack a single uint to get 6 values for an AABB.
+Box UnpackBox(uint box){
+    Box b;
+    b.min = float3(box&31, (box>>5)&31, (box>>10)&31) + chunkOffset;
+    b.max = float3((box>>15)&31, (box>>20)&31, (box>>25)&31) + chunkOffset;
+    return b;
+}
+
+// convert pixel coordinates to [-1,1] uv coordinates
+float2 PixelToUv(uint2 position){
+    float2 uv = float2((position + float2(0.5f, 0.5f)) / float2(width, height) * 2.0f - 1.0f); 
+    return uv;
+}
+
+//given a pixel coordinate, return a ScreenPoint2Ray
+Ray GetCameraRay(uint2 screenpos){
+    float2 uv = PixelToUv(screenpos);
+
+    float3 origin = mul(_CamToWorld, float4(0,0,0,1)).xyz;
+    float3 direction = mul(_CamInverseProjection, float4(uv,0,1)).xyz;
+    direction = mul(_CamToWorld, float4(direction, 0.0f)).xyz;
+    direction = normalize(direction);
+
+    Ray r;
+    r.origin = origin;
+    r.direction = direction;
+    return r;
+}
+
+
+//Check if Ray `r` intersects with AABB `box`
+RayHit CheckIntersect(Ray r, uint box){
+    Box b = UnpackBox(box);
+    float3 imin = (b.min - r.origin)/r.direction;
+    float3 imax = (b.max - r.origin)/r.direction;
+
+    float3 tmin = min(imin, imax);
+    float3 tmax = max(imin, imax);
+
+    float cmin = max(max(tmin.x, tmin.y), tmin.z);
+    float cmax = min(min(tmax.x, tmax.y), tmax.z);
+
+    RayHit result;
+    result.hit = !(cmin > cmax);
+    result.distance = cmin;
+
+    return result;
+}
+
+
+//Traverse a BVH and set hits
+void CheckBvh(Ray ray, uint2 pix){
+    float distance = depthBuffer.Load(pix);
+    uint index = root;
+    uint shape = USHORT_MAX;
+    while(index < USHORT_MAX){
+        Node node = _bvh[index];
+        RayHit check = CheckIntersect(ray, node.box);
+        uint entry = node.traversal&USHORT_MAX;
+        if(entry == USHORT_MAX){
+            if(check.hit && check.distance < distance){
+                shape = node.shape;
+                distance = check.distance;
+                depthBuffer[pix] = distance;
+            }
+            index = node.traversal>>16;
+        }else{
+            if(check.hit){
+                index = entry;
+            }else{
+                index = node.traversal>>16;
+            }
+        }
+    }
+    if(shape != USHORT_MAX){
+        _hits[shape+shapeOffset] = 1;
+    }
+}
+
+//######################################################################
+//################## Main ##############################################
+//######################################################################
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    Ray r = GetCameraRay(id.xy);
+    CheckBvh(r, id.xy);
+}

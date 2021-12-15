@@ -1,0 +1,62 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+
+
+struct Ray{
+    float3 origin;
+    float3 direction;
+};
+
+struct Box{
+    float3 min;
+    float3 max;
+};
+
+struct Hit{
+    uint result;
+    float3 tmin;
+    float3 tmax;
+};
+
+RWBuffer<int> Hits;
+RWStructuredBuffer<Ray> Rays;
+RWStructuredBuffer<Box> Boxes;
+
+float3 _bmin;
+float3 _bmax;
+float height;
+int boxcount;
+
+bool RayIntersect(Ray r, Box b){
+    float3 imin = (b.min - r.origin)/r.direction;
+    float3 imax = (b.max - r.origin)/r.direction;
+
+    float3 tmin = min(imin, imax);
+    float3 tmax = max(imin, imax);
+
+    float cmin = max(max(tmin.x, tmin.y), tmin.z);
+    float cmax = min(min(tmax.x, tmax.y), tmax.z);
+
+    return !(cmin > cmax);
+}
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    Box _box;
+    _box.min = _bmin;
+    _box.max = _bmax;
+    uint idx = id.x*height+id.y;
+    int res;
+    //Hits[id.x] = RayIntersect(Rays[id.x], _box);
+    for(int i = 0; i<boxcount; i++){
+        res = RayIntersect(Rays[idx], Boxes[i]);
+        if(res){
+            Hits[i] = 1;
+            break;
+        }
+    }
+}

@@ -1,0 +1,25 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel Pass1
+#pragma kernel Pass2
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWBuffer<int> IntBuffer;
+AppendStructuredBuffer<int> appendTest;
+
+int foo;
+
+[numthreads(1,1,1)]
+void Pass1 (uint3 id : SV_DispatchThreadID)
+{
+    if((IntBuffer[id.x] & 1)<1){
+        appendTest.Append(IntBuffer[id.x]);
+    }
+}
+
+
+[numthreads(1,1,1)]
+void Pass2 (uint3 id : SV_DispatchThreadID)
+{
+    IntBuffer[id.x] = id.x;
+}
